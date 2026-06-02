@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# Build outputs
+bin/wg
+dist/
+build/
+out/
+
+# TypeScript / Bun caches
+*.tsbuildinfo
+.bun/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
