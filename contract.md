@@ -12,8 +12,10 @@ Binary criteria for "done". Each is independently checkable.
 
 5. **GitHub read wired.** `wg read <owner/repo> <path> [--start N --end N --branch B]` calls `morph.warpGrep.readGitHubFile({ github, path, startLine, endLine, branch })`.
 
-6. **Auth resolution.** Reads `MORPH_API_KEY` from env. If absent and `DOPPLER_TOKEN` is set, fetches via Doppler (`vault/prd/MORPH_API_KEY`). If both are absent, prints a clear error to stderr and exits non-zero.
+6. **Auth resolution.** Reads `MORPHLLM_API_KEY` from env, or accepts `--api-key <key>` (flag overrides env). If both are absent, prints a clear error to stderr and exits non-zero.
 
 7. **Output modes.** Default mode prints `File: <path>` headers followed by content; `--json` mode prints the raw result as JSON to stdout. `--stream` mode prints `[turn N] <toolName>(args)` lines as the agent works.
 
 8. **Typecheck clean.** `bunx tsc --noEmit` exits 0 against the existing `tsconfig.json`.
+
+9. **Tests and lint.** `bun test` passes. `biome check .` passes. Auth and no-Doppler constraints are covered in `test/`.

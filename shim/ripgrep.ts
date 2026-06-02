@@ -12,13 +12,21 @@
 // as `rgPath`. The extraction is cached across invocations by content hash.
 
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
 // @ts-expect-error — Bun-only file import. The platform package ships a
 // binary, not types.
-import embeddedRgPath from "@vscode/ripgrep-darwin-arm64/bin/rg" with { type: "file" };
+import embeddedRgPath from "@vscode/ripgrep-darwin-arm64/bin/rg" with {
+  type: "file",
+};
 
 function materialise(virtualPath: string): string {
   if (!virtualPath.startsWith("/$bunfs/")) return virtualPath;

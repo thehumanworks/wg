@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-import { parseArgs } from "node:util";
 import * as path from "node:path";
+import { parseArgs } from "node:util";
 import { MorphClient } from "@morphllm/morphsdk";
-import DopplerSDK from "@dopplerhq/node-sdk";
 import type {
-  WarpGrepResult,
-  WarpGrepContext,
   GitHubReadFileResult,
+  WarpGrepContext,
+  WarpGrepResult,
+  WarpGrepStep,
 } from "@morphllm/morphsdk/tools/warp-grep";
-import type { WarpGrepStep } from "@morphllm/morphsdk/tools/warp-grep";
+import { resolveApiKey } from "./lib/auth.ts";
 
 const USAGE = `wg — warp grep, fast code search for AI agents
 
@@ -17,6 +17,9 @@ Usage:
   wg github <owner/repo> <search-term> [opts]   Search a public GitHub repo
   wg read <owner/repo> <file-path> [opts]       Read a file from a public GitHub repo
   wg --help
+
+Global options:
+  --api-key <key>           Morph API key (overrides MORPHLLM_API_KEY)
 
 Local-search options:
   -C, --cwd <path>          Repo root (default: current directory)
@@ -38,29 +41,8 @@ GitHub-read options:
   --json
 
 Authentication:
-  Reads MORPH_API_KEY from the environment. If MORPH_API_KEY is unset and
-  DOPPLER_TOKEN is set, fetches it from Doppler (vault / prd / MORPHLLM_API_KEY).
+  Set MORPHLLM_API_KEY in the environment, or pass --api-key <key>.
 `;
-
-async function resolveApiKey(): Promise<string> {
-  const direct = process.env["MORPH_API_KEY"];
-  if (direct && direct.length > 0) return direct;
-
-  const dopplerToken = process.env["DOPPLER_TOKEN"];
-  if (dopplerToken && dopplerToken.length > 0) {
-    const d = new DopplerSDK({ accessToken: dopplerToken });
-    const secret = await d.secrets.get("vault", "prd", "MORPHLLM_API_KEY");
-    const value = secret.value?.computed ?? secret.value?.raw;
-    if (value && value.length > 0) return value;
-    throw new Error(
-      "Doppler returned no value for vault/prd/MORPHLLM_API_KEY",
-    );
-  }
-
-  throw new Error(
-    "No Morph API key found. Set MORPH_API_KEY, or set DOPPLER_TOKEN to fetch it from Doppler (vault/prd/MORPHLLM_API_KEY).",
-  );
-}
 
 function die(msg: string, code = 1): never {
   process.stderr.write(`wg: ${msg}\n`);
@@ -81,7 +63,7 @@ function printContexts(contexts: WarpGrepContext[] | undefined): void {
 
 function reportResult(result: WarpGrepResult, asJson: boolean): number {
   if (asJson) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.success ? 0 : 1;
   }
   if (!result.success) {
@@ -111,7 +93,7 @@ async function consumeStream(
 ): Promise<WarpGrepResult> {
   let next = await stream.next();
   while (!next.done) {
-    process.stderr.write(describeToolCall(next.value) + "\n");
+    process.stderr.write(`${describeToolCall(next.value)}\n`);
     next = await stream.next();
   }
   return next.value;
@@ -139,6 +121,7 @@ function parse(argv: string[]): ParsedFlags {
       branch: { type: "string" },
       start: { type: "string" },
       end: { type: "string" },
+      "api-key": { type: "string" },
     },
   });
   return { values, positionals };
@@ -151,7 +134,9 @@ function asBool(v: unknown): boolean {
   return v === true;
 }
 function asStringArray(v: unknown): string[] | undefined {
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
+  return Array.isArray(v)
+    ? v.filter((x): x is string => typeof x === "string")
+    : undefined;
 }
 
 async function runLocalSearch(
@@ -159,13 +144,13 @@ async function runLocalSearch(
   searchTerm: string,
   flags: ParsedFlags["values"],
 ): Promise<number> {
-  const cwd = asString(flags["cwd"]) ?? process.cwd();
+  const cwd = asString(flags.cwd) ?? process.cwd();
   const repoRoot = path.resolve(cwd);
-  const stream = asBool(flags["stream"]);
-  const json = asBool(flags["json"]);
-  const debug = asBool(flags["debug"]);
-  const includes = asStringArray(flags["include"]);
-  const excludes = asStringArray(flags["exclude"]);
+  const stream = asBool(flags.stream);
+  const json = asBool(flags.json);
+  const debug = asBool(flags.debug);
+  const includes = asStringArray(flags.include);
+  const excludes = asStringArray(flags.exclude);
   const searchType: "default" | "node_modules" = asBool(flags["node-modules"])
     ? "node_modules"
     : "default";
@@ -201,9 +186,9 @@ async function runGitHubSearch(
   searchTerm: string,
   flags: ParsedFlags["values"],
 ): Promise<number> {
-  const stream = asBool(flags["stream"]);
-  const json = asBool(flags["json"]);
-  const branch = asString(flags["branch"]);
+  const stream = asBool(flags.stream);
+  const json = asBool(flags.json);
+  const branch = asString(flags.branch);
 
   if (stream) {
     const gen = morph.warpGrep.searchGitHub({
@@ -239,10 +224,10 @@ async function runGitHubRead(
   filePath: string,
   flags: ParsedFlags["values"],
 ): Promise<number> {
-  const json = asBool(flags["json"]);
-  const startLine = parseLine(asString(flags["start"]), "start");
-  const endLine = parseLine(asString(flags["end"]), "end");
-  const branch = asString(flags["branch"]);
+  const json = asBool(flags.json);
+  const startLine = parseLine(asString(flags.start), "start");
+  const endLine = parseLine(asString(flags.end), "end");
+  const branch = asString(flags.branch);
 
   const result: GitHubReadFileResult = await morph.warpGrep.readGitHubFile({
     github,
@@ -253,7 +238,7 @@ async function runGitHubRead(
   });
 
   if (json) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.success ? 0 : 1;
   }
   if (!result.success) {
@@ -264,14 +249,17 @@ async function runGitHubRead(
   const header = [
     headerLeft,
     result.branch ? `@${result.branch}` : "",
-    result.lineRange ? ` lines ${result.lineRange[0]}-${result.lineRange[1]}` : "",
+    result.lineRange
+      ? ` lines ${result.lineRange[0]}-${result.lineRange[1]}`
+      : "",
     result.totalLines ? ` of ${result.totalLines}` : "",
   ]
     .filter(Boolean)
     .join("");
   process.stdout.write(`=== ${header} ===\n`);
   process.stdout.write(result.content ?? "");
-  if (result.content && !result.content.endsWith("\n")) process.stdout.write("\n");
+  if (result.content && !result.content.endsWith("\n"))
+    process.stdout.write("\n");
   return 0;
 }
 
@@ -288,10 +276,19 @@ async function main(): Promise<number> {
 
   const { values, positionals } = parsed;
 
-  if (asBool(values["help"]) || positionals.length === 0) {
+  if (asBool(values.help) || positionals.length === 0) {
     process.stdout.write(USAGE);
-    return asBool(values["help"]) ? 0 : 1;
+    return asBool(values.help) ? 0 : 1;
   }
+
+  let apiKey: string;
+  try {
+    apiKey = resolveApiKey(asString(values["api-key"]));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    die(msg);
+  }
+  const morph = new MorphClient({ apiKey });
 
   const first = positionals[0]!;
 
@@ -299,9 +296,11 @@ async function main(): Promise<number> {
     const repo = positionals[1];
     const term = positionals.slice(2).join(" ");
     if (!repo || !term) {
-      die(`github subcommand needs <owner/repo> and <search-term>\n\n${USAGE}`, 2);
+      die(
+        `github subcommand needs <owner/repo> and <search-term>\n\n${USAGE}`,
+        2,
+      );
     }
-    const morph = new MorphClient({ apiKey: await resolveApiKey() });
     return runGitHubSearch(morph, repo, term, values);
   }
 
@@ -311,14 +310,12 @@ async function main(): Promise<number> {
     if (!repo || !filePath) {
       die(`read subcommand needs <owner/repo> and <file-path>\n\n${USAGE}`, 2);
     }
-    parseLine(asString(values["start"]), "start");
-    parseLine(asString(values["end"]), "end");
-    const morph = new MorphClient({ apiKey: await resolveApiKey() });
+    parseLine(asString(values.start), "start");
+    parseLine(asString(values.end), "end");
     return runGitHubRead(morph, repo, filePath, values);
   }
 
   const searchTerm = positionals.join(" ");
-  const morph = new MorphClient({ apiKey: await resolveApiKey() });
   return runLocalSearch(morph, searchTerm, values);
 }
 
@@ -332,8 +329,10 @@ function formatError(err: unknown): string {
   }
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err: unknown) => {
-    die(formatError(err));
-  });
+if (import.meta.main) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((err: unknown) => {
+      die(formatError(err));
+    });
+}
