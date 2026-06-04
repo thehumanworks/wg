@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   AUTH_MISSING_MESSAGE,
+  buildDopplerSecretUrl,
   resolveApiKey,
   resolveDopplerLookupOptions,
 } from "../lib/auth.ts";
@@ -83,6 +84,17 @@ describe("resolveApiKey", () => {
       project: "flag-project",
       config: "stg",
     });
+  });
+
+  test("builds the Doppler secret endpoint URL", () => {
+    expect(
+      buildDopplerSecretUrl("MORPHLLM_API_KEY", {
+        project: "custom-project",
+        config: "dev",
+      }),
+    ).toBe(
+      "https://api.doppler.com/v3/configs/config/secret?project=custom-project&config=dev&name=MORPHLLM_API_KEY",
+    );
   });
 
   test("uses Doppler project/config defaults when overrides are empty", () => {

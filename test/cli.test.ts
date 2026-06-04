@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import * as fs from "node:fs";
 import { AUTH_MISSING_MESSAGE } from "../lib/auth.ts";
-import { runCli } from "./helpers.ts";
+import { repoRoot, runCli } from "./helpers.ts";
 
 const VALID_KEY = "sk-test000000000000000000000000000000";
 
@@ -100,5 +101,17 @@ describe("CLI auth and help", () => {
     });
     expect(flagWins.stderr).not.toContain(AUTH_MISSING_MESSAGE);
     expect(flagWins.stderr).not.toContain("not-a-valid-morph-key");
+  });
+});
+
+describe("Doppler implementation footprint", () => {
+  test("does not depend on the Doppler SDK package", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(`${repoRoot}/package.json`, "utf8"),
+    ) as { dependencies?: Record<string, string> };
+    const lock = fs.readFileSync(`${repoRoot}/bun.lock`, "utf8");
+
+    expect(pkg.dependencies?.["@dopplerhq/node-sdk"]).toBeUndefined();
+    expect(lock).not.toContain("@dopplerhq/node-sdk");
   });
 });

@@ -1,5 +1,3 @@
-import { DopplerSDK } from "@dopplerhq/node-sdk";
-
 export type DopplerOptions = {
   dopplerProject?: string;
   dopplerConfig?: string;
@@ -10,6 +8,12 @@ export type DopplerLookupOptions = {
   project: string;
   config: string;
   accessToken?: string;
+};
+
+type DopplerSecretResponse = {
+  value?: {
+    raw?: string;
+  };
 };
 
 function nonEmpty(value: string | undefined): string | undefined {
@@ -34,17 +38,34 @@ export function resolveDopplerLookupOptions(
   };
 }
 
+export function buildDopplerSecretUrl(
+  secretName: string,
+  lookup: Pick<DopplerLookupOptions, "project" | "config">,
+): string {
+  const url = new URL("https://api.doppler.com/v3/configs/config/secret");
+  url.searchParams.set("project", lookup.project);
+  url.searchParams.set("config", lookup.config);
+  url.searchParams.set("name", secretName);
+  return url.toString();
+}
+
 async function getDopplerSecret(
   secretName: string,
   options: DopplerOptions = {},
 ): Promise<string> {
-  const { accessToken, project, config } = resolveDopplerLookupOptions(options);
-  if (!accessToken) return "";
-
-  const doppler = new DopplerSDK({ accessToken });
+  const lookup = resolveDopplerLookupOptions(options);
+  if (!lookup.accessToken) return "";
 
   try {
-    const secret = await doppler.secrets.get(project, config, secretName);
+    const response = await fetch(buildDopplerSecretUrl(secretName, lookup), {
+      headers: {
+        Authorization: `Bearer ${lookup.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) return "";
+
+    const secret = (await response.json()) as DopplerSecretResponse;
     return secret.value?.raw ?? "";
   } catch {
     return "";
