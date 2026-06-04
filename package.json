@@ -8,6 +8,7 @@
   "scripts": {
     "wg": "bun run index.ts",
     "compile": "bun run build.ts",
+    "install-bin": "bun run compile && mkdir -p ~/.local/bin && mv bin/wg ~/.local/bin/wg",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "lint": "biome check .",
