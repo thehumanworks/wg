@@ -19,7 +19,7 @@ Usage:
   wg --help
 
 Global options:
-  --api-key <key>           Morph API key (overrides MORPHLLM_API_KEY)
+  --api-key <key>           Morph API key
 
 Local-search options:
   -C, --cwd <path>          Repo root (default: current directory)
@@ -39,9 +39,6 @@ GitHub-read options:
   --end <n>                 End line (1-based, inclusive)
   --branch <branch>
   --json
-
-Authentication:
-  Set MORPHLLM_API_KEY in the environment, or pass --api-key <key>.
 `;
 
 function die(msg: string, code = 1): never {
@@ -122,6 +119,9 @@ function parse(argv: string[]): ParsedFlags {
       start: { type: "string" },
       end: { type: "string" },
       "api-key": { type: "string" },
+      "doppler-config": { type: "string" },
+      "doppler-project": { type: "string" },
+      "doppler-token": { type: "string" },
     },
   });
   return { values, positionals };
@@ -283,14 +283,18 @@ async function main(): Promise<number> {
 
   let apiKey: string;
   try {
-    apiKey = await resolveApiKey(asString(values["api-key"]));
+    apiKey = await resolveApiKey(asString(values["api-key"]), {
+      dopplerConfig: asString(values["doppler-config"]),
+      dopplerProject: asString(values["doppler-project"]),
+      dopplerToken: asString(values["doppler-token"]),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     die(msg);
   }
   const morph = new MorphClient({ apiKey });
 
-  const first = positionals[0]!;
+  const first = positionals[0];
 
   if (first === "github") {
     const repo = positionals[1];

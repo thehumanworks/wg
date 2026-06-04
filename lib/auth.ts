@@ -1,28 +1,73 @@
 import { DopplerSDK } from "@dopplerhq/node-sdk";
 
-const dopplerProject = process.env.WG_DOPPLER_PROJECT || "wg";
-const dopplerConfig = process.env.WG_DOPPLER_CONFIG || "prd";
+export type DopplerOptions = {
+  dopplerProject?: string;
+  dopplerConfig?: string;
+  dopplerToken?: string;
+};
 
-async function getDopplerSecret(secretName: string): Promise<string> {
-  const doppler = new DopplerSDK({
-    accessToken: process.env.DOPPLER_TOKEN
-  });
+export type DopplerLookupOptions = {
+  project: string;
+  config: string;
+  accessToken?: string;
+};
 
-  const secret = await doppler.secrets.get(dopplerProject, dopplerConfig, secretName);
-  return secret.value?.raw ?? "";
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function resolveDopplerLookupOptions(
+  options: DopplerOptions = {},
+): DopplerLookupOptions {
+  return {
+    project:
+      nonEmpty(options.dopplerProject) ??
+      nonEmpty(process.env.WG_DOPPLER_PROJECT) ??
+      "wg",
+    config:
+      nonEmpty(options.dopplerConfig) ??
+      nonEmpty(process.env.WG_DOPPLER_CONFIG) ??
+      "prd",
+    accessToken:
+      nonEmpty(options.dopplerToken) ?? nonEmpty(process.env.DOPPLER_TOKEN),
+  };
+}
+
+async function getDopplerSecret(
+  secretName: string,
+  options: DopplerOptions = {},
+): Promise<string> {
+  const { accessToken, project, config } = resolveDopplerLookupOptions(options);
+  if (!accessToken) return "";
+
+  const doppler = new DopplerSDK({ accessToken });
+
+  try {
+    const secret = await doppler.secrets.get(project, config, secretName);
+    return secret.value?.raw ?? "";
+  } catch {
+    return "";
+  }
 }
 
 export const AUTH_MISSING_MESSAGE =
   "No Morph API key found. Set MORPHLLM_API_KEY or pass --api-key <key>.";
 
-export async function resolveApiKey(flagKey: string | undefined): Promise<string> {
-  const fromFlag = flagKey?.trim();
-  if (fromFlag && fromFlag.length > 0) return fromFlag;
+export async function resolveApiKey(
+  flagKey: string | undefined,
+  dopplerOptions: DopplerOptions = {},
+): Promise<string> {
+  const fromFlag = nonEmpty(flagKey);
+  if (fromFlag) return fromFlag;
 
-  const fromEnv = process.env.MORPHLLM_API_KEY;
-  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  const fromEnv = nonEmpty(process.env.MORPHLLM_API_KEY);
+  if (fromEnv) return fromEnv;
 
-  const fromDoppler = await getDopplerSecret("MORPHLLM_API_KEY");
+  const fromDoppler = await getDopplerSecret(
+    "MORPHLLM_API_KEY",
+    dopplerOptions,
+  );
   if (fromDoppler && fromDoppler.length > 0) return fromDoppler;
 
   throw new Error(AUTH_MISSING_MESSAGE);

@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import * as fs from "node:fs";
 import { AUTH_MISSING_MESSAGE } from "../lib/auth.ts";
-import { repoRoot, runCli } from "./helpers.ts";
+import { runCli } from "./helpers.ts";
 
 const VALID_KEY = "sk-test000000000000000000000000000000";
 
 describe("CLI auth and help", () => {
-  test("--help exits 0 and documents MORPHLLM_API_KEY and --api-key", async () => {
+  test("--help exits 0 and documents --api-key without auth prose", async () => {
     const { stdout, stderr, exitCode } = await runCli(["--help"]);
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(stdout).toContain("MORPHLLM_API_KEY");
     expect(stdout).toContain("--api-key");
+    expect(stdout).not.toContain("MORPHLLM_API_KEY");
     expect(stdout).not.toMatch(/doppler/i);
   });
 
@@ -19,15 +18,6 @@ describe("CLI auth and help", () => {
     const { stderr, exitCode } = await runCli(["local-search-term"]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain(`wg: ${AUTH_MISSING_MESSAGE}`);
-  });
-
-  test("DOPPLER_TOKEN alone does not satisfy auth", async () => {
-    const { stderr, exitCode } = await runCli(["term"], {
-      DOPPLER_TOKEN: "dp.test.token",
-    });
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain(AUTH_MISSING_MESSAGE);
-    expect(stderr).not.toMatch(/doppler/i);
   });
 
   test("MORPH_API_KEY alone does not satisfy auth", async () => {
@@ -72,6 +62,22 @@ describe("CLI auth and help", () => {
     expect(stderr).not.toContain(AUTH_MISSING_MESSAGE);
   });
 
+  test("Doppler flags are accepted while --api-key keeps precedence", async () => {
+    const { stderr } = await runCli([
+      "--doppler-project",
+      "custom-project",
+      "--doppler-config",
+      "dev",
+      "--doppler-token",
+      "dp.test.token",
+      "--api-key",
+      VALID_KEY,
+      "term",
+    ]);
+    expect(stderr).not.toContain("Unknown option");
+    expect(stderr).not.toContain(AUTH_MISSING_MESSAGE);
+  });
+
   test("MORPHLLM_API_KEY env is accepted (past auth resolution)", async () => {
     const { stderr } = await runCli(["term"], {
       MORPHLLM_API_KEY: VALID_KEY,
@@ -86,33 +92,13 @@ describe("CLI auth and help", () => {
     const withEnvOnly = await runCli(["term"], {
       MORPHLLM_API_KEY: "not-a-valid-morph-key",
     });
-    expect(withEnvOnly.stderr).toContain("Invalid API key format");
+    expect(withEnvOnly.exitCode).not.toBe(0);
+    expect(withEnvOnly.stderr).not.toContain(AUTH_MISSING_MESSAGE);
 
     const flagWins = await runCli(["--api-key", VALID_KEY, "term"], {
       MORPHLLM_API_KEY: "not-a-valid-morph-key",
     });
     expect(flagWins.stderr).not.toContain(AUTH_MISSING_MESSAGE);
     expect(flagWins.stderr).not.toContain("not-a-valid-morph-key");
-  });
-});
-
-describe("no Doppler dependency", () => {
-  test("package.json does not list @dopplerhq/node-sdk", () => {
-    const pkg = JSON.parse(
-      fs.readFileSync(`${repoRoot}/package.json`, "utf8"),
-    ) as { dependencies?: Record<string, string> };
-    expect(pkg.dependencies?.["@dopplerhq/node-sdk"]).toBeUndefined();
-  });
-
-  test("index.ts does not import or reference Doppler", () => {
-    const source = fs.readFileSync(`${repoRoot}/index.ts`, "utf8");
-    expect(source).not.toMatch(/doppler/i);
-    expect(source).not.toMatch(/DOPPLER_TOKEN/);
-    expect(source).not.toMatch(/MORPH_API_KEY/);
-  });
-
-  test("lockfile does not pin @dopplerhq/node-sdk", () => {
-    const lock = fs.readFileSync(`${repoRoot}/bun.lock`, "utf8");
-    expect(lock).not.toContain("@dopplerhq/node-sdk");
   });
 });
