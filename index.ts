@@ -283,7 +283,7 @@ async function main(): Promise<number> {
 
   let apiKey: string;
   try {
-    apiKey = resolveApiKey(asString(values["api-key"]));
+    apiKey = await resolveApiKey(asString(values["api-key"]));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     die(msg);
